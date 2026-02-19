@@ -1,4 +1,7 @@
 import streamlit as st
+import csv
+from pathlib import Path
+from datetime import datetime
 
 QUIZ_BANK = {
     "Vectors": [
@@ -88,6 +91,31 @@ QUIZ_BANK = {
     ],
 }
 
+DATA_FILE = Path("data/submissions.csv")
+
+def save_submission(topic: str, clarity: int, pace: int, difficulty: int, comments: str, quiz_score: int, quiz_total: int):
+    # Ensure the data folder exists
+    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    # Create file + header if it doesn't exist
+    file_exists = DATA_FILE.exists()
+    with open(DATA_FILE, mode="a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow([
+                "timestamp", "topic",
+                "clarity", "pace", "difficulty",
+                "comments",
+                "quiz_score", "quiz_total"
+            ])
+
+        writer.writerow([
+            datetime.now().isoformat(timespec="seconds"),
+            topic,
+            clarity, pace, difficulty,
+            comments,
+            quiz_score, quiz_total
+        ])
 
 st.set_page_config(page_title="Project 66 Prototype", layout="centered")
 st.title("Project 66: Weekly Feedback + Quiz Prototype")
@@ -105,6 +133,18 @@ st.info("Prototype setup complete")
 
 st.divider()
 st.header("Weekly Student Feedback")
+
+if "feedback_submitted" not in st.session_state:
+    st.session_state["feedback_submitted"] = False
+
+if "feedback_data" not in st.session_state:
+    st.session_state["feedback_data"] = {
+        "topic": None,
+        "clarity": None,
+        "pace": None,
+        "difficulty": None,
+        "comments": ""
+    }
 
 with st.form("feedback_form"):
     topic = st.selectbox(
@@ -140,6 +180,15 @@ with st.form("feedback_form"):
     submitted = st.form_submit_button("Submit feedback")
 
 if submitted:
+    st.session_state["feedback_submitted"] = True
+    st.session_state["feedback_data"] = {
+        "topic": topic,
+        "clarity": clarity,
+        "pace": pace,
+        "difficulty": difficulty,
+        "comments": comments
+    }
+
     st.success("Feedback submitted successfully!")
 
     st.subheader("Your feedback summary")
@@ -155,41 +204,67 @@ st.divider()
 st.header("Weekly Topic Quiz")
 st.write("Answer 3 quick questions based on the selected topic.")
 
+if not st.session_state["feedback_submitted"]:
+    st.warning("Please submit feedback first to unlock the quiz.")
+    st.stop()
 
-quiz_topic = topic  
+quiz_topic = st.session_state["feedback_data"]["topic"]
+questions = QUIZ_BANK.get(quiz_topic, [])
 
-if quiz_topic in QUIZ_BANK:
-    questions = QUIZ_BANK[quiz_topic]
+if not questions:
+    st.error("No questions found for this topic. Please submit feedback again.")
+    st.stop()
 
-    with st.form("quiz_form"):
-        st.subheader(f"Quiz Topic: {quiz_topic}")
+with st.form("quiz_form"):
+    st.subheader(f"Quiz Topic: {quiz_topic}")
 
-        user_answers = []
-        for i, item in enumerate(questions, start=1):
-            choice = st.radio(
-                f"Q{i}. {item['q']}",
-                item["options"],
-                key=f"q_{quiz_topic}_{i}"
-            )
-            user_answers.append(choice)
+    user_answers = []
+    for i, item in enumerate(questions, start=1):
+        choice = st.radio(
+            f"Q{i}. {item['q']}",
+            item["options"],
+            key=f"q_{quiz_topic}_{i}"
+        )
+        user_answers.append(choice)
 
-        quiz_submitted = st.form_submit_button("Submit quiz")
+    quiz_submitted = st.form_submit_button("Submit quiz")
 
-    if quiz_submitted:
-        score = 0
-        for i, item in enumerate(questions):
-            if user_answers[i] == item["answer"]:
-                score += 1
+if quiz_submitted:
+    score = 0
+    for i, item in enumerate(questions):
+        if user_answers[i] == item["answer"]:
+            score += 1
 
-        st.success(f"Quiz submitted! Your score: {score}/{len(questions)}")
+    fb = st.session_state["feedback_data"]
 
-        st.subheader("Answer review")
-        for i, item in enumerate(questions, start=1):
-            correct = item["answer"]
-            chosen = user_answers[i-1]
-            if chosen == correct:
-                st.write(f"✅ Q{i}: Correct")
-            else:
-                st.write(f"❌ Q{i}: You chose '{chosen}'. Correct answer: '{correct}'")
-else:
-    st.warning("Please select a topic to load the quiz.")
+    save_submission(
+        topic=fb["topic"],
+        clarity=fb["clarity"],
+        pace=fb["pace"],
+        difficulty=fb["difficulty"],
+        comments=fb["comments"],
+        quiz_score=score,
+        quiz_total=len(questions)
+    )
+
+    st.session_state["feedback_submitted"] = False
+    st.session_state["feedback_data"] = {
+        "topic": None,
+        "clarity": None,
+        "pace": None,
+        "difficulty": None,
+        "comments": ""
+    }
+
+    st.success(f"Quiz submitted! Your score: {score}/{len(questions)}")
+
+    st.subheader("Answer review")
+    for i, item in enumerate(questions, start=1):
+        correct = item["answer"]
+        chosen = user_answers[i-1]
+        if chosen == correct:
+            st.write(f"✅ Q{i}: Correct")
+        else:
+            st.write(f"❌ Q{i}: You chose '{chosen}'. Correct answer: '{correct}'")
+
+
