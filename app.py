@@ -2,6 +2,7 @@ import streamlit as st
 import csv
 from pathlib import Path
 from datetime import datetime
+import pandas as pd
 
 QUIZ_BANK = {
     "Vectors": [
@@ -267,4 +268,32 @@ if quiz_submitted:
         else:
             st.write(f"❌ Q{i}: You chose '{chosen}'. Correct answer: '{correct}'")
 
+st.divider()
+st.header("Stored Submissions (Prototype Dashboard)")
 
+if DATA_FILE.exists():
+    df = pd.read_csv(DATA_FILE)
+
+    st.write("Latest saved records:")
+    st.dataframe(df.tail(10), use_container_width=True)
+
+    st.subheader("Quick Summary Charts")
+
+    avg_feedback = df.groupby("topic")[["clarity", "pace", "difficulty"]].mean()
+    st.write("Average feedback scores by topic:")
+    st.bar_chart(avg_feedback)
+
+    df["quiz_percent"] = df["quiz_score"] / df["quiz_total"]
+    avg_quiz = df.groupby("topic")[["quiz_percent"]].mean()
+    st.write("Average quiz performance by topic:")
+    st.bar_chart(avg_quiz)
+
+    st.subheader("Perceived vs Actual (Prototype)")
+    df["perceived_avg"] = (df["clarity"] + df["pace"] + (6 - df["difficulty"])) / 3
+
+    compare = df.groupby("topic")[["perceived_avg", "quiz_percent"]].mean()
+    st.write("Perceived understanding (from feedback) vs actual (quiz %):")
+    st.line_chart(compare)
+
+else:
+    st.info("No submissions saved yet. Submit feedback + quiz to create the CSV.")
