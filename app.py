@@ -153,31 +153,40 @@ with st.form("feedback_form"):
         ["Limits", "Derivatives", "Matrices", "Vectors", "Probability"]
     )
 
+    st.write("How clear was the teaching for this topic?")
+    st.caption("Scale: 1 = very unclear, 5 = very clear")
     clarity = st.slider(
-        "How clear was the teaching for this topic?",
+        "Clarity",
         min_value=1,
         max_value=5,
-        value=3
-    )
+        value=3,
+        label_visibility="collapsed"
+    )  
 
+    st.write("How was the pace of teaching?")
+    st.caption("Scale: 1 = too slow, 3 = appropriate pace, 5 = too fast")
     pace = st.slider(
-        "How was the pace of teaching?",
+        "Pace",
         min_value=1,
         max_value=5,
-        value=3
-    )
+        value=3,
+        label_visibility="collapsed"
+    )    
 
+    st.write("How  difficult did you find this topic?")
+    st.caption("Scale: 1 = very easy, 5 = very difficult")
     difficulty = st.slider(
-        "How difficult did you find this topic?",
+        "Difficulty",
         min_value=1,
         max_value=5,
-        value=3
-    )
+        value=3,
+        label_visibility="collapsed"
+    )  
 
     comments = st.text_area(
         "Any additional comments (optional)"
     )
-
+    
     submitted = st.form_submit_button("Submit feedback")
 
 if submitted:
@@ -277,23 +286,54 @@ if DATA_FILE.exists():
     st.write("Latest saved records:")
     st.dataframe(df.tail(10), use_container_width=True)
 
-    st.subheader("Quick Summary Charts")
+    st.subheader("Topic Analysis")
+    selected_topic = st.selectbox("Choose a topic to analyse", df["topic"].unique())
 
-    avg_feedback = df.groupby("topic")[["clarity", "pace", "difficulty"]].mean()
-    st.write("Average feedback scores by topic:")
-    st.bar_chart(avg_feedback)
+    topic_df = df[df["topic"] == selected_topic].copy()
 
-    df["quiz_percent"] = df["quiz_score"] / df["quiz_total"]
-    avg_quiz = df.groupby("topic")[["quiz_percent"]].mean()
-    st.write("Average quiz performance by topic:")
-    st.bar_chart(avg_quiz)
+    topic_df["timestamp"] = pd.to_datetime(topic_df["timestamp"])
 
-    st.subheader("Perceived vs Actual (Prototype)")
-    df["perceived_avg"] = (df["clarity"] + df["pace"] + (6 - df["difficulty"])) / 3
+    topic_df["pace_adjusted"] = topic_df["pace"].apply(lambda x: 5 - abs(x-3) * 2)
 
-    compare = df.groupby("topic")[["perceived_avg", "quiz_percent"]].mean()
-    st.write("Perceived understanding (from feedback) vs actual (quiz %):")
-    st.line_chart(compare)
+    topic_df["difficulty_adjusted"] = 6 - topic_df["difficulty"]
+
+    topic_df["perceived_score"] = (
+        topic_df["clarity"] +
+        topic_df["pace_adjusted"] +
+        topic_df["difficulty_adjusted"]
+    ) / 3
+
+    topic_df["actual_score"] = (topic_df["quiz_score"] / topic_df["quiz_total"]) * 5
+
+    avg_clarity = topic_df["clarity"].mean()
+    avg_pace = topic_df["pace"].mean()
+    avg_difficulty = topic_df["difficulty"].mean()
+    avg_quiz_percent = (topic_df["quiz_score"] / topic_df["quiz_total"]).mean() * 100
+    avg_perceived = topic_df["perceived_score"].mean()
+    avg_actual = topic_df["actual_score"].mean()
+    
+    st.subheader("Summary for Selected Topic")
+    st.write(f"**Topic:** {selected_topic}")
+    st.write(f"**Average clarity:** {avg_clarity:.2f} / 5")
+    st.write(f"**Average pace rating:** {avg_pace:.2f} / 5 (ideal pace is 3)")
+    st.write(f"**Average difficulty:** {avg_difficulty:.2f} / 5")
+    st.write(f"**Average quiz score:** {avg_quiz_percent:.1f}%")
+    st.write(f"**Average perceived understanding:** {avg_perceived:.2f} / 5")
+    st.write(f"**Average actual understanding:** {avg_actual:.2f} / 5")
+
+    st.subheader("Perceived vs Actual Understanding")
+    compare_df = pd.DataFrame({
+        "Type": ["Perceived Understanding", "Actual Understanding"],
+        "Score": [avg_perceived, avg_actual]
+    }).set_index("Type")
+
+    st.bar_chart(compare_df)
+
+    st.subheader("Trend Over Time")
+    trend_df = topic_df.sort_values("timestamp")[["timestamp", "perceived_score", "actual_score"]]
+    trend_df = trend_df.set_index("timestamp")
+
+    st.line_chart(trend_df)
 
 else:
     st.info("No submissions saved yet. Submit feedback + quiz to create the CSV.")
