@@ -94,7 +94,7 @@ QUIZ_BANK = {
 
 DATA_FILE = Path("data/submissions.csv")
 
-def save_submission(topic: str, clarity: int, pace: int, difficulty: int, comments: str, quiz_score: int, quiz_total: int):
+def save_submission(student_id: str, topic: str, clarity: int, pace: int, difficulty: int, comments: str, quiz_score: int, quiz_total: int):
     # Ensure the data folder exists
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -104,7 +104,7 @@ def save_submission(topic: str, clarity: int, pace: int, difficulty: int, commen
         writer = csv.writer(f)
         if not file_exists:
             writer.writerow([
-                "timestamp", "topic",
+                "timestamp", "student_id", "topic", 
                 "clarity", "pace", "difficulty",
                 "comments",
                 "quiz_score", "quiz_total"
@@ -112,6 +112,7 @@ def save_submission(topic: str, clarity: int, pace: int, difficulty: int, commen
 
         writer.writerow([
             datetime.now().isoformat(timespec="seconds"),
+            student_id,
             topic,
             clarity, pace, difficulty,
             comments,
@@ -140,6 +141,7 @@ if "feedback_submitted" not in st.session_state:
 
 if "feedback_data" not in st.session_state:
     st.session_state["feedback_data"] = {
+        "student_id": "",
         "topic": None,
         "clarity": None,
         "pace": None,
@@ -148,6 +150,8 @@ if "feedback_data" not in st.session_state:
     }
 
 with st.form("feedback_form"):
+    student_id = st.text_input("Enter Student ID")
+
     topic = st.selectbox(
         "Select the topic",
         ["Limits", "Derivatives", "Matrices", "Vectors", "Probability"]
@@ -192,6 +196,7 @@ with st.form("feedback_form"):
 if submitted:
     st.session_state["feedback_submitted"] = True
     st.session_state["feedback_data"] = {
+        "student_id" : student_id,
         "topic": topic,
         "clarity": clarity,
         "pace": pace,
@@ -248,6 +253,7 @@ if quiz_submitted:
     fb = st.session_state["feedback_data"]
 
     save_submission(
+        student_id=fb["student_id"],
         topic=fb["topic"],
         clarity=fb["clarity"],
         pace=fb["pace"],
@@ -259,6 +265,7 @@ if quiz_submitted:
 
     st.session_state["feedback_submitted"] = False
     st.session_state["feedback_data"] = {
+        "student_id": "",
         "topic": None,
         "clarity": None,
         "pace": None,
