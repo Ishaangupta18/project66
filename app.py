@@ -121,6 +121,8 @@ def save_submission(student_id: str, topic: str, clarity: int, pace: int, diffic
 
 st.set_page_config(page_title="Project 66 Prototype", layout="centered")
 st.title("Project 66: Weekly Feedback + Quiz Prototype")
+role = st.radio("Select user role", ["Student", "Teacher"], horizontal=True)
+st.write(f"Current view: {role}")
 st.write("If you can see this page, Streamlit is working ✅")
 
 st.header("Next steps")
@@ -132,15 +134,15 @@ st.markdown("""
 """)
 
 st.info("Prototype setup complete")
+if role == "Student":
+    st.divider()
+    st.header("Weekly Student Feedback")
 
-st.divider()
-st.header("Weekly Student Feedback")
+    if "feedback_submitted" not in st.session_state:
+        st.session_state["feedback_submitted"] = False
 
-if "feedback_submitted" not in st.session_state:
-    st.session_state["feedback_submitted"] = False
-
-if "feedback_data" not in st.session_state:
-    st.session_state["feedback_data"] = {
+    if "feedback_data" not in st.session_state:
+       st.session_state["feedback_data"] = {
         "student_id": "",
         "topic": None,
         "clarity": None,
@@ -149,198 +151,262 @@ if "feedback_data" not in st.session_state:
         "comments": ""
     }
 
-with st.form("feedback_form"):
-    student_id = st.text_input("Enter Student ID")
+    with st.form("feedback_form"):
+        student_id = st.text_input("Enter Student ID", key="student_id_input")
 
-    topic = st.selectbox(
-        "Select the topic",
-        ["Limits", "Derivatives", "Matrices", "Vectors", "Probability"]
-    )
-
-    st.write("How clear was the teaching for this topic?")
-    st.caption("Scale: 1 = very unclear, 5 = very clear")
-    clarity = st.slider(
-        "Clarity",
-        min_value=1,
-        max_value=5,
-        value=3,
-        label_visibility="collapsed"
-    )  
-
-    st.write("How was the pace of teaching?")
-    st.caption("Scale: 1 = too slow, 3 = appropriate pace, 5 = too fast")
-    pace = st.slider(
-        "Pace",
-        min_value=1,
-        max_value=5,
-        value=3,
-        label_visibility="collapsed"
-    )    
-
-    st.write("How  difficult did you find this topic?")
-    st.caption("Scale: 1 = very easy, 5 = very difficult")
-    difficulty = st.slider(
-        "Difficulty",
-        min_value=1,
-        max_value=5,
-        value=3,
-        label_visibility="collapsed"
-    )  
-
-    comments = st.text_area(
-        "Any additional comments (optional)"
-    )
-    
-    submitted = st.form_submit_button("Submit feedback")
-
-if submitted:
-    st.session_state["feedback_submitted"] = True
-    st.session_state["feedback_data"] = {
-        "student_id" : student_id,
-        "topic": topic,
-        "clarity": clarity,
-        "pace": pace,
-        "difficulty": difficulty,
-        "comments": comments
-    }
-
-    st.success("Feedback submitted successfully!")
-
-    st.subheader("Your feedback summary")
-    st.write("Topic:", topic)
-    st.write("Clarity score:", clarity)
-    st.write("Pace score:", pace)
-    st.write("Difficulty score:", difficulty)
-
-    if comments:
-        st.write("Comments:", comments)
-
-st.divider()
-st.header("Weekly Topic Quiz")
-st.write("Answer 3 quick questions based on the selected topic.")
-
-if not st.session_state["feedback_submitted"]:
-    st.warning("Please submit feedback first to unlock the quiz.")
-    st.stop()
-
-quiz_topic = st.session_state["feedback_data"]["topic"]
-questions = QUIZ_BANK.get(quiz_topic, [])
-
-if not questions:
-    st.error("No questions found for this topic. Please submit feedback again.")
-    st.stop()
-
-with st.form("quiz_form"):
-    st.subheader(f"Quiz Topic: {quiz_topic}")
-
-    user_answers = []
-    for i, item in enumerate(questions, start=1):
-        choice = st.radio(
-            f"Q{i}. {item['q']}",
-            item["options"],
-            key=f"q_{quiz_topic}_{i}"
+        topic = st.selectbox(
+            "Select the topic",
+            ["Limits", "Derivatives", "Matrices", "Vectors", "Probability"]
         )
-        user_answers.append(choice)
 
-    quiz_submitted = st.form_submit_button("Submit quiz")
+        st.write("How clear was the teaching for this topic?")
+        st.caption("Scale: 1 = very unclear, 5 = very clear")
+        clarity = st.slider(
+            "Clarity",
+            min_value=1,
+            max_value=5,
+            value=3,
+            label_visibility="collapsed"
+        )  
 
-if quiz_submitted:
-    score = 0
-    for i, item in enumerate(questions):
-        if user_answers[i] == item["answer"]:
-            score += 1
+        st.write("How was the pace of teaching?")
+        st.caption("Scale: 1 = too slow, 3 = appropriate pace, 5 = too fast")
+        pace = st.slider(
+           "Pace",
+           min_value=1,
+           max_value=5,
+           value=3,
+           label_visibility="collapsed"
+        )    
 
-    fb = st.session_state["feedback_data"]
+        st.write("How  difficult did you find this topic?")
+        st.caption("Scale: 1 = very easy, 5 = very difficult")
+        difficulty = st.slider(
+            "Difficulty",
+            min_value=1,
+            max_value=5,
+            value=3,
+            label_visibility="collapsed"
+        )  
 
-    save_submission(
-        student_id=fb["student_id"],
-        topic=fb["topic"],
-        clarity=fb["clarity"],
-        pace=fb["pace"],
-        difficulty=fb["difficulty"],
-        comments=fb["comments"],
-        quiz_score=score,
-        quiz_total=len(questions)
-    )
+        comments = st.text_area(
+            "Any additional comments (optional)"
+        )
+        
+        submitted = st.form_submit_button("Submit feedback")
 
-    st.session_state["feedback_submitted"] = False
-    st.session_state["feedback_data"] = {
-        "student_id": "",
-        "topic": None,
-        "clarity": None,
-        "pace": None,
-        "difficulty": None,
-        "comments": ""
-    }
+    if submitted:
+        st.session_state["feedback_submitted"] = True
+        st.session_state["current_student_id"] = student_id
+        st.session_state["feedback_data"] = {
+            "student_id" : student_id,
+            "topic": topic,
+            "clarity": clarity,
+            "pace": pace,
+            "difficulty": difficulty,
+            "comments": comments
+        }
 
-    st.success(f"Quiz submitted! Your score: {score}/{len(questions)}")
+        st.success("Feedback submitted successfully!")
 
-    st.subheader("Answer review")
-    for i, item in enumerate(questions, start=1):
-        correct = item["answer"]
-        chosen = user_answers[i-1]
-        if chosen == correct:
-            st.write(f"✅ Q{i}: Correct")
+        st.subheader("Your feedback summary")
+        st.write("Topic:", topic)
+        st.write("Clarity score:", clarity)
+        st.write("Pace score:", pace)
+        st.write("Difficulty score:", difficulty)
+
+        if comments:
+            st.write("Comments:", comments)
+
+    st.divider()
+    st.header("Weekly Topic Quiz")
+    st.write("Answer 3 quick questions based on the selected topic.")
+
+    if not st.session_state["feedback_submitted"]:
+        st.warning("Please submit feedback first to unlock the quiz.")
+        st.stop()
+
+    quiz_topic = st.session_state["feedback_data"]["topic"]
+    questions = QUIZ_BANK.get(quiz_topic, [])
+
+    if not questions:
+        st.error("No questions found for this topic. Please submit feedback again.")
+        st.stop()
+
+    with st.form("quiz_form"):
+        st.subheader(f"Quiz Topic: {quiz_topic}")
+
+        user_answers = []
+        for i, item in enumerate(questions, start=1):
+            choice = st.radio(
+                f"Q{i}. {item['q']}",
+                item["options"],
+                key=f"q_{quiz_topic}_{i}"
+            )
+            user_answers.append(choice)
+
+        quiz_submitted = st.form_submit_button("Submit quiz")
+
+    if quiz_submitted:
+        score = 0
+        for i, item in enumerate(questions):
+            if user_answers[i] == item["answer"]:
+                score += 1
+
+        fb = st.session_state["feedback_data"]
+
+        save_submission(
+            student_id=fb["student_id"],
+            topic=fb["topic"],
+            clarity=fb["clarity"],
+            pace=fb["pace"],
+            difficulty=fb["difficulty"],
+            comments=fb["comments"],
+            quiz_score=score,
+            quiz_total=len(questions)
+        )
+
+        st.session_state["last_student_id"] = fb["student_id"]
+
+        st.session_state["feedback_submitted"] = False
+        st.session_state["feedback_data"] = {
+            "student_id": "",
+            "topic": None,
+            "clarity": None,
+            "pace": None,
+            "difficulty": None,
+            "comments": ""
+        }
+
+        st.success(f"Quiz submitted! Your score: {score}/{len(questions)}")
+
+        st.subheader("Answer review")
+        for i, item in enumerate(questions, start=1):
+            correct = item["answer"]
+            chosen = user_answers[i-1]
+            if chosen == correct:
+                st.write(f"✅ Q{i}: Correct")
+            else:
+                st.write(f"❌ Q{i}: You chose '{chosen}'. Correct answer: '{correct}'")
+
+    st.divider()
+    st.header("My Progress")
+
+    if DATA_FILE.exists():
+        df = pd.read_csv(DATA_FILE)
+        
+        df["student_id"] = (
+        df["student_id"]
+        .fillna("")
+        .astype(str)
+        .str.replace(".0", "", regex=False)
+        .str.strip()
+        )
+
+        current_student_id = str(st.session_state.get("student_id_input", "")).strip()
+
+        if current_student_id:
+            student_df = df[df["student_id"] == current_student_id].copy()
+
+            if not student_df.empty:
+                st.write("Your recent submissions:")
+                st.dataframe(student_df.tail(100), use_container_width=True)
+
+                student_df["timestamp"] = pd.to_datetime(student_df["timestamp"])
+                student_df["pace_adjusted"] = student_df["pace"].apply(lambda x: 5 - abs(x - 3) * 2)
+                student_df["difficulty_adjusted"] = 6 - student_df["difficulty"]
+
+                student_df["perceived_score"] = (
+                    student_df["clarity"] +
+                    student_df["pace_adjusted"] +
+                    student_df["difficulty_adjusted"]
+                ) / 3
+
+                student_df["actual_score"] = (student_df["quiz_score"] / student_df["quiz_total"]) * 5
+
+                st.subheader("My Perceived vs Actual Understanding")
+                my_compare = student_df.sort_values("timestamp")[["timestamp", "perceived_score", "actual_score"]]
+                my_compare = my_compare.set_index("timestamp")
+
+                st.line_chart(my_compare)
+
+                st.subheader("Overall Understanding Summary")
+
+                avg_perceived = student_df["perceived_score"].mean()
+                avg_actual = student_df["actual_score"].mean()
+
+                compare_df = pd.DataFrame({
+                    "Type": ["Perceived", "Actual"],
+                    "Score": [avg_perceived, avg_actual]
+                }).set_index("Type")
+
+                st.bar_chart(compare_df)
+
+            else:
+                st.info("No previous submissions found for this student yet.")
         else:
-            st.write(f"❌ Q{i}: You chose '{chosen}'. Correct answer: '{correct}'")
+            st.info("Enter a student ID and submit feedback to see your progress.")
+    else:
+        st.info("No saved data yet.")    
 
-st.divider()
-st.header("Stored Submissions (Prototype Dashboard)")
+if role == "Teacher":
+    st.divider()
+    st.header("Stored Submissions (Prototype Dashboard)")
 
-if DATA_FILE.exists():
-    df = pd.read_csv(DATA_FILE)
+    if DATA_FILE.exists():
+        df = pd.read_csv(DATA_FILE)
 
-    st.write("Latest saved records:")
-    st.dataframe(df.tail(10), use_container_width=True)
+        st.write("Latest saved records:")
+        st.dataframe(df.tail(10), use_container_width=True)
 
-    st.subheader("Topic Analysis")
-    selected_topic = st.selectbox("Choose a topic to analyse", df["topic"].unique())
+        st.subheader("Topic Analysis")
+        selected_topic = st.selectbox("Choose a topic to analyse", df["topic"].unique())
 
-    topic_df = df[df["topic"] == selected_topic].copy()
+        topic_df = df[df["topic"] == selected_topic].copy()
 
-    topic_df["timestamp"] = pd.to_datetime(topic_df["timestamp"])
+        topic_df["timestamp"] = pd.to_datetime(topic_df["timestamp"])
 
-    topic_df["pace_adjusted"] = topic_df["pace"].apply(lambda x: 5 - abs(x-3) * 2)
+        topic_df["pace_adjusted"] = topic_df["pace"].apply(lambda x: 5 - abs(x-3) * 2)
 
-    topic_df["difficulty_adjusted"] = 6 - topic_df["difficulty"]
+        topic_df["difficulty_adjusted"] = 6 - topic_df["difficulty"]
 
-    topic_df["perceived_score"] = (
-        topic_df["clarity"] +
-        topic_df["pace_adjusted"] +
-        topic_df["difficulty_adjusted"]
-    ) / 3
+        topic_df["perceived_score"] = (
+            topic_df["clarity"] +
+            topic_df["pace_adjusted"] +
+            topic_df["difficulty_adjusted"]
+        ) / 3
 
-    topic_df["actual_score"] = (topic_df["quiz_score"] / topic_df["quiz_total"]) * 5
+        topic_df["actual_score"] = (topic_df["quiz_score"] / topic_df["quiz_total"]) * 5
 
-    avg_clarity = topic_df["clarity"].mean()
-    avg_pace = topic_df["pace"].mean()
-    avg_difficulty = topic_df["difficulty"].mean()
-    avg_quiz_percent = (topic_df["quiz_score"] / topic_df["quiz_total"]).mean() * 100
-    avg_perceived = topic_df["perceived_score"].mean()
-    avg_actual = topic_df["actual_score"].mean()
-    
-    st.subheader("Summary for Selected Topic")
-    st.write(f"**Topic:** {selected_topic}")
-    st.write(f"**Average clarity:** {avg_clarity:.2f} / 5")
-    st.write(f"**Average pace rating:** {avg_pace:.2f} / 5 (ideal pace is 3)")
-    st.write(f"**Average difficulty:** {avg_difficulty:.2f} / 5")
-    st.write(f"**Average quiz score:** {avg_quiz_percent:.1f}%")
-    st.write(f"**Average perceived understanding:** {avg_perceived:.2f} / 5")
-    st.write(f"**Average actual understanding:** {avg_actual:.2f} / 5")
+        avg_clarity = topic_df["clarity"].mean()
+        avg_pace = topic_df["pace"].mean()
+        avg_difficulty = topic_df["difficulty"].mean()
+        avg_quiz_percent = (topic_df["quiz_score"] / topic_df["quiz_total"]).mean() * 100
+        avg_perceived = topic_df["perceived_score"].mean()
+        avg_actual = topic_df["actual_score"].mean()
+        
+        st.subheader("Summary for Selected Topic")
+        st.write(f"**Topic:** {selected_topic}")
+        st.write(f"**Average clarity:** {avg_clarity:.2f} / 5")
+        st.write(f"**Average pace rating:** {avg_pace:.2f} / 5 (ideal pace is 3)")
+        st.write(f"**Average difficulty:** {avg_difficulty:.2f} / 5")
+        st.write(f"**Average quiz score:** {avg_quiz_percent:.1f}%")
+        st.write(f"**Average perceived understanding:** {avg_perceived:.2f} / 5")
+        st.write(f"**Average actual understanding:** {avg_actual:.2f} / 5")
 
-    st.subheader("Perceived vs Actual Understanding")
-    compare_df = pd.DataFrame({
-        "Type": ["Perceived Understanding", "Actual Understanding"],
-        "Score": [avg_perceived, avg_actual]
-    }).set_index("Type")
+        st.subheader("Perceived vs Actual Understanding")
+        compare_df = pd.DataFrame({
+            "Type": ["Perceived Understanding", "Actual Understanding"],
+            "Score": [avg_perceived, avg_actual]
+        }).set_index("Type")
 
-    st.bar_chart(compare_df)
+        st.bar_chart(compare_df)
 
-    st.subheader("Trend Over Time")
-    trend_df = topic_df.sort_values("timestamp")[["timestamp", "perceived_score", "actual_score"]]
-    trend_df = trend_df.set_index("timestamp")
+        st.subheader("Trend Over Time")
+        trend_df = topic_df.sort_values("timestamp")[["timestamp", "perceived_score", "actual_score"]]
+        trend_df = trend_df.set_index("timestamp")
 
-    st.line_chart(trend_df)
+        st.line_chart(trend_df)
 
-else:
-    st.info("No submissions saved yet. Submit feedback + quiz to create the CSV.")
+    else:
+        st.info("No submissions saved yet. Submit feedback + quiz to create the CSV.")
