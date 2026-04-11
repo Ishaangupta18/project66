@@ -3,6 +3,7 @@ import csv
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
+TEACHER_PASSWORD = "teacher123"
 
 QUIZ_BANK = {
     "Vectors": [
@@ -119,11 +120,57 @@ def save_submission(student_id: str, topic: str, clarity: int, pace: int, diffic
             quiz_score, quiz_total
         ])
 
-st.set_page_config(page_title="Project 66 Prototype", layout="centered")
-st.title("Project 66: Weekly Feedback + Quiz Prototype")
-role = st.radio("Select user role", ["Student", "Teacher"], horizontal=True)
+st.set_page_config(page_title="Dissertation Project", layout="centered")
+st.title("Project: Weekly Feedback + Quiz Prototype")
+
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+if "user_role" not in st.session_state:
+    st.session_state["user_role"] = None
+
+if "logged_in_student_id" not in st.session_state:
+    st.session_state["logged_in_student_id"] = ""
+
+if not st.session_state["logged_in"]:
+    st.subheader("Login")
+
+    login_role = st.selectbox("Login as", ["Student", "Teacher"])
+
+    if login_role == "Student":
+        student_login_id = st.text_input("Enter Student ID")
+
+        if st.button("Login as Student"):
+            if student_login_id.strip():
+                st.session_state["logged_in"] = True
+                st.session_state["user_role"] = "Student"
+                st.session_state["logged_in_student_id"] = student_login_id.strip()
+                st.rerun()
+            else:
+                st.warning("Please enter a student ID.")
+
+    elif login_role == "Teacher":
+        teacher_password = st.text_input("Enter Teacher Password", type="password")
+
+        if st.button("Login as Teacher"):
+            if teacher_password == TEACHER_PASSWORD:
+                st.session_state["logged_in"] = True
+                st.session_state["user_role"] = "Teacher"
+                st.rerun()
+            else:
+                st.error("Incorrect teacher password.")
+
+    st.stop()
+
+role = st.session_state["user_role"]
+
 st.write(f"Current view: {role}")
-st.write("If you can see this page, Streamlit is working ✅")
+
+if st.button("Logout"):
+    st.session_state["logged_in"] = False
+    st.session_state["user_role"] = None
+    st.session_state["logged_in_student_id"] = ""
+    st.rerun()
 
 st.header("Next steps")
 st.markdown("""
@@ -152,7 +199,8 @@ if role == "Student":
     }
 
     with st.form("feedback_form"):
-        student_id = st.text_input("Enter Student ID", key="student_id_input")
+        student_id = st.session_state["logged_in_student_id"]
+        st.text_input("Student ID", value=student_id, disabled=True)
 
         topic = st.selectbox(
             "Select the topic",
@@ -303,7 +351,7 @@ if role == "Student":
         .str.strip()
         )
 
-        current_student_id = str(st.session_state.get("student_id_input", "")).strip()
+        current_student_id = str(st.session_state.get("logged_in_student_id", "")).strip()
 
         if current_student_id:
             student_df = df[df["student_id"] == current_student_id].copy()
