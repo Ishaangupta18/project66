@@ -4,23 +4,23 @@ from pathlib import Path
 from datetime import datetime
 import pandas as pd
 import random
+import altair as alt
 
-# SETTINGS
-# The teacher password is stored here. In a real deployment this would be
-# stored as an environment variable, but hardcoding it is fine for a prototype.
+# Settings
 
-TEACHER_PASSWORD = "teacher123"
-
-# Path to the CSV file where all submissions are saved.
-DATA_FILE = Path("data/submissions.csv")
-
-# How many questions to show per quiz session (drawn randomly from the bank).
+TEACHER_PASSWORD   = "teacher123"
+DATA_FILE          = Path("data/submissions.csv")
 QUESTIONS_PER_QUIZ = 3
 
+# Consistent colours used across all charts.
+# Blue = perceived understanding, Orange = actual quiz score.
+COLOUR_PERCEIVED = "#4C72B0"
+COLOUR_ACTUAL    = "#DD8452"
 
-# QUIZ BANK
-# Each topic has 5 questions. Every time a student takes a quiz, 3 are
-# picked at random, so repeat attempts feel slightly different.
+
+# Quiz bank
+# Each topic has 5 questions. Every session, 3 are picked at random so
+# students who repeat a topic see some variety.
 
 QUIZ_BANK = {
     "Vectors": [
@@ -53,8 +53,8 @@ QUIZ_BANK = {
     "Matrices": [
         {
             "q": "A matrix with 2 rows and 3 columns is called a…",
-            "options": ["2×3 matrix", "3×2 matrix", "2×2 matrix", "3×3 matrix"],
-            "answer": "2×3 matrix"
+            "options": ["2x3 matrix", "3x2 matrix", "2x2 matrix", "3x3 matrix"],
+            "answer": "2x3 matrix"
         },
         {
             "q": "Which operation is always defined for two matrices of the same size?",
@@ -82,12 +82,12 @@ QUIZ_BANK = {
     ],
     "Limits": [
         {
-            "q": "lim(x → 0) x equals…",
+            "q": "lim(x -> 0) x equals…",
             "options": ["0", "1", "infinity", "undefined"],
             "answer": "0"
         },
         {
-            "q": "lim(x → a) c, where c is a constant, equals…",
+            "q": "lim(x -> a) c, where c is a constant, equals…",
             "options": ["0", "c", "a", "undefined"],
             "answer": "c"
         },
@@ -97,20 +97,20 @@ QUIZ_BANK = {
             "answer": "equal"
         },
         {
-            "q": "lim(x → ∞) 1/x equals…",
-            "options": ["1", "∞", "0", "undefined"],
+            "q": "lim(x -> infinity) 1/x equals…",
+            "options": ["1", "infinity", "0", "undefined"],
             "answer": "0"
         },
         {
-            "q": "L'Hôpital's rule is used when a limit takes an indeterminate form such as…",
-            "options": ["0/0", "1/∞", "∞ + 1", "0 × 1"],
+            "q": "L'Hopital's rule is used when a limit takes an indeterminate form such as…",
+            "options": ["0/0", "1/infinity", "infinity + 1", "0 x 1"],
             "answer": "0/0"
         },
     ],
     "Derivatives": [
         {
-            "q": "The derivative of x² is…",
-            "options": ["2x", "x", "x³", "2"],
+            "q": "The derivative of x squared is…",
+            "options": ["2x", "x", "x cubed", "2"],
             "answer": "2x"
         },
         {
@@ -142,9 +142,9 @@ QUIZ_BANK = {
             "answer": "0 and 1"
         },
         {
-            "q": "If events A and B are independent, P(A ∩ B) equals…",
-            "options": ["P(A) + P(B)", "P(A) × P(B)", "P(A) – P(B)", "0"],
-            "answer": "P(A) × P(B)"
+            "q": "If events A and B are independent, P(A and B) equals…",
+            "options": ["P(A) + P(B)", "P(A) x P(B)", "P(A) - P(B)", "0"],
+            "answer": "P(A) x P(B)"
         },
         {
             "q": "The probability of an impossible event is…",
@@ -169,22 +169,19 @@ QUIZ_BANK = {
     ],
 }
 
-# DATA FUNCTIONS
-# These two functions handle reading and writing the CSV file.
 
+# Data functions
 
 def save_submission(student_id, topic, clarity, pace, difficulty,
                     comments, quiz_score, quiz_total):
     """
-    Saves one student's feedback + quiz result as a single row in the CSV.
-    Creates the file and the 'data' folder if they don't exist yet.
+    Appends one submission row to the CSV file.
+    Creates the file and 'data' folder on the first run.
     """
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-
     file_exists = DATA_FILE.exists()
     with open(DATA_FILE, mode="a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        # Write the header row only the first time the file is created.
         if not file_exists:
             writer.writerow([
                 "timestamp", "student_id", "topic",
@@ -200,40 +197,39 @@ def save_submission(student_id, topic, clarity, pace, difficulty,
 
 def load_data():
     """
-    Loads all submissions from the CSV into a pandas DataFrame.
-    Also cleans up the student_id column so filtering works reliably
-    (removes accidental spaces or '.0' that can appear after CSV round-trips).
-    Returns an empty DataFrame if no data exists yet.
+    Reads the CSV and returns a cleaned DataFrame.
+    Normalises student_id so filtering is reliable regardless of how
+    the value was stored (e.g. removes trailing '.0' or extra spaces).
     """
     if not DATA_FILE.exists():
         return pd.DataFrame()
-
     df = pd.read_csv(DATA_FILE)
-
-    # Clean the student_id column so "S001", "S001 ", and "S001.0" all match.
     df["student_id"] = (
-        df["student_id"]
-        .fillna("")
-        .astype(str)
-        .str.replace(r"\.0$", "", regex=True)
-        .str.strip()
+        df["student_id"].fillna("").astype(str)
+        .str.replace(r"\.0$", "", regex=True).str.strip()
     )
-
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     return df
 
 
 def compute_scores(df):
     """
-    Adds two computed columns to a DataFrame:
+    Adds perceived_score and actual_score columns.
 
-    - perceived_score: a 0–5 composite that combines how clear, well-paced,
-      and manageable the student found the topic.
-      * pace is adjusted so that 3 (ideal) scores highest and 1 or 5 score lowest.
-      * difficulty is inverted so an easy topic (low score) gives a high contribution.
+    perceived_score (0-5):
+        Combines clarity, pace, and difficulty into a single composite.
+        Pace is adjusted so that the ideal mid-point (3) scores highest.
+        Difficulty is inverted so a student who found the topic easy gets
+        a higher contribution to the perceived score.
 
-    - actual_score: the quiz result scaled to 0–5 so it can be plotted alongside
-      the perceived score on the same axis.
+        perceived_score = (clarity + pace_adjusted + difficulty_adjusted) / 3
+        where:
+            pace_adjusted       = 5 - |pace - 3| x 2
+            difficulty_adjusted = 6 - difficulty
+
+    actual_score (0-5):
+        Quiz result scaled from its raw fraction to the 0-5 range so it
+        can be plotted on the same axis as perceived_score.
     """
     df = df.copy()
     df["pace_adjusted"]       = df["pace"].apply(lambda x: 5 - abs(x - 3) * 2)
@@ -245,7 +241,125 @@ def compute_scores(df):
     return df
 
 
-# Must be the first Streamlit call in the script.
+# Chart helpers
+# Using Altair so that every chart has proper titles, axis labels,
+# a consistent colour scheme, and interactive tooltips.
+
+def line_chart(df, title):
+    """
+    Builds a labelled Altair line chart comparing perceived and actual
+    scores over time. Dots are drawn at each data point.
+    Expects df to have columns: timestamp, perceived_score, actual_score.
+    """
+    # Altair works best with tidy (long-format) data, so we reshape the table.
+    long = df[["timestamp", "perceived_score", "actual_score"]].melt(
+        id_vars="timestamp", var_name="Measure", value_name="Score"
+    )
+    long["Measure"] = long["Measure"].map({
+        "perceived_score": "Perceived Understanding",
+        "actual_score":    "Actual (Quiz) Score"
+    })
+
+    chart = (
+        alt.Chart(long)
+        .mark_line(point=True, strokeWidth=2)
+        .encode(
+            x=alt.X(
+                "timestamp:T",
+                title="Submission Date",
+                axis=alt.Axis(labelAngle=-30, format="%d %b")
+            ),
+            y=alt.Y(
+                "Score:Q",
+                title="Score  (0 - 5 scale)",
+                scale=alt.Scale(domain=[0, 5])
+            ),
+            color=alt.Color(
+                "Measure:N",
+                scale=alt.Scale(
+                    domain=["Perceived Understanding", "Actual (Quiz) Score"],
+                    range=[COLOUR_PERCEIVED, COLOUR_ACTUAL]
+                ),
+                legend=alt.Legend(title="", orient="bottom")
+            ),
+            tooltip=[
+                alt.Tooltip("timestamp:T",  title="Date",    format="%d %b %Y"),
+                alt.Tooltip("Measure:N",    title="Measure"),
+                alt.Tooltip("Score:Q",      title="Score",   format=".2f"),
+            ]
+        )
+        .properties(title=title, width="container")
+    )
+    return chart
+
+
+def bar_chart(perceived, actual, title):
+    """
+    Builds a labelled Altair bar chart comparing two average scores.
+    """
+    data = pd.DataFrame({
+        "Measure": ["Perceived Understanding", "Actual (Quiz) Score"],
+        "Score":   [round(perceived, 2), round(actual, 2)]
+    })
+
+    chart = (
+        alt.Chart(data)
+        .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5)
+        .encode(
+            x=alt.X("Measure:N", title=None, axis=alt.Axis(labelAngle=0)),
+            y=alt.Y(
+                "Score:Q",
+                title="Average Score  (0 - 5 scale)",
+                scale=alt.Scale(domain=[0, 5])
+            ),
+            color=alt.Color(
+                "Measure:N",
+                scale=alt.Scale(
+                    domain=["Perceived Understanding", "Actual (Quiz) Score"],
+                    range=[COLOUR_PERCEIVED, COLOUR_ACTUAL]
+                ),
+                legend=None
+            ),
+            tooltip=[
+                alt.Tooltip("Measure:N", title="Measure"),
+                alt.Tooltip("Score:Q",   title="Score", format=".2f")
+            ]
+        )
+        .properties(title=title, width="container")
+    )
+    return chart
+
+
+def show_formula():
+    """
+    Displays the perceived score formula inside a collapsible section.
+    """
+    with st.expander("How is the Perceived Score calculated?"):
+        st.markdown(
+            "The **Perceived Score** is a composite measure on a 0-5 scale "
+            "that summarises how a student experienced a topic in a given week. "
+            "It is computed from three feedback ratings:"
+        )
+        st.latex(
+            r"\text{Perceived Score} = "
+            r"\frac{C + P' + D'}{3}"
+        )
+        st.markdown("Where:")
+        st.markdown(
+            "- **C** = Clarity rating (1-5, student's rating of how clearly the topic was taught)\n"
+            "- **P'** = Adjusted Pace = $5 - |\\text{Pace} - 3| \\times 2$  "
+            "  *(rewards a pace rating of 3 — the ideal — and penalises extremes)*\n"
+            "- **D'** = Adjusted Difficulty = $6 - \\text{Difficulty}$  "
+            "  *(inverted so that an easy topic contributes a higher score)*"
+        )
+        st.markdown(
+            "The **Actual Score** is the student's quiz result "
+            "scaled to the same 0-5 range:  "
+            "$\\text{Actual Score} = \\dfrac{\\text{Quiz Score}}{\\text{Total Questions}} \\times 5$"
+        )
+
+
+# Page configuration (must be the first Streamlit call)
 
 st.set_page_config(
     page_title="MathTrack",
@@ -253,34 +367,48 @@ st.set_page_config(
     layout="centered"
 )
 
-# SESSION STATE INITIALISATION
-# Streamlit reruns the whole script on every user interaction, so any variable
-# that needs to persist between interactions must live in st.session_state.
 
-defaults = {
-    "logged_in": False,
-    "user_role": None,
+# Session state
+# Variables that must survive a page rerun are stored here.
+
+DEFAULTS = {
+    "logged_in":            False,
+    "user_role":            None,
     "logged_in_student_id": "",
-    "feedback_submitted": False,
-    "feedback_data": {},
-    "quiz_questions": [],
+    "feedback_submitted":   False,
+    "feedback_data":        {},
+    "quiz_questions":       [],
 }
-for key, value in defaults.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
+for k, v in DEFAULTS.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 
-# LOGIN SCREEN
-# Shown to everyone who is not yet logged in.
+# Login screen
 
 if not st.session_state["logged_in"]:
 
-    st.title("📐 MathTrack")
+    st.title("MathTrack")
     st.subheader("Weekly Feedback & Learning Analytics")
     st.markdown(
-        "MathTrack helps students reflect on their weekly understanding of "
-        "mathematics topics and lets teachers monitor learning trends across the class."
+        "MathTrack supports weekly reflection on mathematics topics. "
+        "Students rate their understanding and complete a short quiz each week. "
+        "Teachers can track trends and identify topics that may need revisiting."
     )
+
+    with st.expander("How does MathTrack work?"):
+        st.markdown(
+            "**For students — three simple steps each week:**\n\n"
+            "1. Log in with your Student ID.\n"
+            "2. Rate how clearly the topic was taught, the pace, and how difficult you found it.\n"
+            "3. Complete a short three-question quiz on the same topic.\n\n"
+            "Your results are saved and shown back to you on the **My Progress** page "
+            "so you can see how your understanding develops over time.\n\n"
+            "**For teachers:**  \n"
+            "Log in with the teacher password to access the class overview and "
+            "topic-level dashboards showing perceived and actual understanding across the class."
+        )
+
     st.divider()
 
     login_role = st.selectbox("I am a…", ["Student", "Teacher"])
@@ -289,83 +417,74 @@ if not st.session_state["logged_in"]:
         student_login_id = st.text_input("Enter your Student ID")
         if st.button("Log in", type="primary"):
             if student_login_id.strip():
-                st.session_state["logged_in"] = True
-                st.session_state["user_role"] = "Student"
+                st.session_state["logged_in"]            = True
+                st.session_state["user_role"]            = "Student"
                 st.session_state["logged_in_student_id"] = student_login_id.strip()
                 st.rerun()
             else:
                 st.warning("Please enter your Student ID before logging in.")
 
-    else:  # Teacher login
+    else:
         teacher_pwd = st.text_input("Enter Teacher Password", type="password")
         if st.button("Log in", type="primary"):
             if teacher_pwd == TEACHER_PASSWORD:
-                st.session_state["logged_in"] = True
-                st.session_state["user_role"] = "Teacher"
+                st.session_state["logged_in"]  = True
+                st.session_state["user_role"]  = "Teacher"
                 st.rerun()
             else:
                 st.error("Incorrect password. Please try again.")
 
-    # Stop here — don't render the rest of the app until the user logs in.
     st.stop()
 
 
-# Displays the app name, who is logged in, and a logout button.
+# Shared header (visible after login)
 
 role = st.session_state["user_role"]
 
 col_title, col_logout = st.columns([4, 1])
-
 with col_title:
     if role == "Student":
-        st.title("📐 MathTrack — Student View")
+        st.title("MathTrack — Student View")
         st.caption(f"Logged in as: **{st.session_state['logged_in_student_id']}**")
     else:
-        st.title("📐 MathTrack — Teacher View")
+        st.title("MathTrack — Teacher View")
         st.caption("Logged in as: **Teacher**")
 
 with col_logout:
-    st.write("")  # small spacer so the button lines up nicely
+    st.write("")
     if st.button("Log out"):
-        # Clear all session state and return to the login screen.
-        for key, value in defaults.items():
-            st.session_state[key] = value
+        for k, v in DEFAULTS.items():
+            st.session_state[k] = v
         st.rerun()
 
 
-# STUDENT VIEW
+# Student view
+
 if role == "Student":
 
-    # Two tabs: one for submitting this week's feedback + quiz,
-    # one for viewing the student's own progress over time.
-    tab_submit, tab_progress = st.tabs(["📝 Weekly Submission", "📊 My Progress"])
+    tab_submit, tab_progress = st.tabs(["Weekly Submission", "My Progress"])
 
-    # TAB 1 — Weekly Submission (Feedback form + Quiz)
+    # Tab 1: Feedback form and quiz
+
     with tab_submit:
 
         st.header("Step 1 — Weekly Feedback")
         st.markdown(
             "Rate how teaching went for the topic you studied this week. "
-            "Submitting this unlocks the short quiz below."
+            "Submitting this will unlock the quiz below."
         )
 
-        # Only show the feedback form if the student hasn't submitted it yet
-        # this session. Once submitted, show a confirmation message instead.
         if not st.session_state["feedback_submitted"]:
-
             with st.form("feedback_form"):
-                # Show the student's ID as a read-only field.
                 st.text_input(
                     "Student ID",
                     value=st.session_state["logged_in_student_id"],
                     disabled=True
                 )
-
                 topic = st.selectbox(
                     "Which topic did you study this week?",
                     list(QUIZ_BANK.keys())
                 )
-
                 st.markdown("---")
 
                 st.markdown("**How clear was the teaching for this topic?**")
@@ -382,54 +501,42 @@ if role == "Student":
 
                 comments = st.text_area(
                     "Any additional comments? (optional)",
-                    placeholder="e.g. I struggled with the second example in class…"
+                    placeholder="e.g. I found integration by parts particularly tricky…"
                 )
-
                 submit_feedback = st.form_submit_button(
                     "Submit Feedback & Unlock Quiz", type="primary"
                 )
 
             if submit_feedback:
-                # Randomly select 3 questions from the 5 available for this topic.
-                all_questions = QUIZ_BANK[topic]
-                chosen_questions = random.sample(
-                    all_questions, min(QUESTIONS_PER_QUIZ, len(all_questions))
-                )
-
-                # Store the selected questions and feedback data in session state
-                # so they are still available when the quiz is submitted.
-                st.session_state["quiz_questions"] = chosen_questions
+                chosen = random.sample(QUIZ_BANK[topic],
+                                       min(QUESTIONS_PER_QUIZ, len(QUIZ_BANK[topic])))
+                st.session_state["quiz_questions"]     = chosen
                 st.session_state["feedback_submitted"] = True
                 st.session_state["feedback_data"] = {
                     "student_id": st.session_state["logged_in_student_id"],
-                    "topic": topic,
-                    "clarity": clarity,
-                    "pace": pace,
-                    "difficulty": difficulty,
-                    "comments": comments,
+                    "topic": topic, "clarity": clarity,
+                    "pace": pace, "difficulty": difficulty, "comments": comments,
                 }
                 st.rerun()
 
         else:
-            # Feedback already submitted this session — show a summary.
             fb = st.session_state["feedback_data"]
             st.success(
                 f"Feedback submitted for **{fb['topic']}**. "
-                "Now complete the quiz below."
+                "Complete the quiz below to save your record."
             )
 
-        # Quiz (only visible after feedback is submitted)
-        if st.session_state["feedback_submitted"]:
+        # Quiz
 
+        if st.session_state["feedback_submitted"]:
             st.divider()
             st.header("Step 2 — Topic Quiz")
-            fb = st.session_state["feedback_data"]
+            fb        = st.session_state["feedback_data"]
+            questions = st.session_state["quiz_questions"]
             st.markdown(
                 f"Answer the three questions below about **{fb['topic']}**. "
                 "Your score will be saved together with your feedback."
             )
-
-            questions = st.session_state["quiz_questions"]
 
             with st.form("quiz_form"):
                 user_answers = []
@@ -440,136 +547,111 @@ if role == "Student":
                         key=f"quiz_{fb['topic']}_{i}"
                     )
                     user_answers.append(choice)
-
                 submit_quiz = st.form_submit_button("Submit Quiz", type="primary")
 
             if submit_quiz:
-                # Count correct answers.
                 score = sum(
                     1 for i, item in enumerate(questions)
                     if user_answers[i] == item["answer"]
                 )
-
-                # Save the combined feedback + quiz record to the CSV.
                 save_submission(
-                    student_id=fb["student_id"],
-                    topic=fb["topic"],
-                    clarity=fb["clarity"],
-                    pace=fb["pace"],
-                    difficulty=fb["difficulty"],
-                    comments=fb["comments"],
-                    quiz_score=score,
-                    quiz_total=len(questions),
+                    fb["student_id"], fb["topic"], fb["clarity"], fb["pace"],
+                    fb["difficulty"], fb["comments"], score, len(questions)
                 )
-
-                # Reset session state so the form is ready for next week.
+                # Clear session state so the form resets for next week.
                 st.session_state["feedback_submitted"] = False
-                st.session_state["feedback_data"] = {}
-                st.session_state["quiz_questions"] = []
+                st.session_state["feedback_data"]      = {}
+                st.session_state["quiz_questions"]     = []
 
                 st.success(f"Submitted! Your score: **{score} / {len(questions)}**")
-
-                # Show which answers were right and wrong.
                 st.subheader("Answer Review")
                 for i, item in enumerate(questions, start=1):
                     correct = item["answer"]
                     chosen  = user_answers[i - 1]
                     if chosen == correct:
-                        st.write(f"✅ **Q{i}:** Correct — *{correct}*")
+                        st.write(f"Q{i}: Correct — *{correct}*")
                     else:
                         st.write(
-                            f"❌ **Q{i}:** You chose *{chosen}* — "
+                            f"Q{i}: You chose *{chosen}* — "
                             f"correct answer: **{correct}**"
                         )
 
-    # TAB 2 — My Progress
-    # Shows the student's own submission history and charts.
-    
+    # Tab 2: My Progress
+
     with tab_progress:
 
         st.header("My Learning Progress")
         st.markdown(
-            "This page compares your **perceived understanding** "
-            "(based on your clarity, pace, and difficulty ratings) "
-            "with your **actual quiz performance** over time."
+            "The charts below compare your **perceived understanding** "
+            "(derived from your weekly feedback ratings) with your "
+            "**actual quiz performance** across all submissions."
         )
+
+        show_formula()
 
         df_all = load_data()
         sid    = st.session_state["logged_in_student_id"]
 
-        # Check whether this student has any saved submissions.
         if df_all.empty or sid not in df_all["student_id"].values:
             st.info(
-                "No submissions found yet. "
-                "Complete a Weekly Submission first to start tracking your progress."
+                "No submissions yet — complete a Weekly Submission first "
+                "to start tracking your progress."
             )
         else:
-            # Filter to only this student's rows and compute the scores.
             student_df = compute_scores(
                 df_all[df_all["student_id"] == sid].copy()
             ).sort_values("timestamp")
 
-            # Submission history table
             st.subheader("Submission History")
-            display_cols = ["timestamp", "topic", "clarity", "pace",
-                            "difficulty", "quiz_score", "quiz_total"]
             st.dataframe(
-                student_df[display_cols].rename(columns={
-                    "timestamp":   "Date / Time",
-                    "topic":       "Topic",
-                    "clarity":     "Clarity",
-                    "pace":        "Pace",
-                    "difficulty":  "Difficulty",
-                    "quiz_score":  "Quiz Score",
-                    "quiz_total":  "Out Of"
+                student_df[
+                    ["timestamp", "topic", "clarity", "pace",
+                     "difficulty", "quiz_score", "quiz_total"]
+                ].rename(columns={
+                    "timestamp":  "Date / Time", "topic":      "Topic",
+                    "clarity":    "Clarity",     "pace":       "Pace",
+                    "difficulty": "Difficulty",  "quiz_score": "Quiz Score",
+                    "quiz_total": "Out Of"
                 }),
                 width="stretch"
             )
 
-            # Summary metric cards
             st.subheader("Overall Summary")
-            avg_perceived = student_df["perceived_score"].mean()
-            avg_actual    = student_df["actual_score"].mean()
-            gap           = avg_perceived - avg_actual
+            avg_p = student_df["perceived_score"].mean()
+            avg_a = student_df["actual_score"].mean()
+            gap   = avg_p - avg_a
 
             col1, col2, col3 = st.columns(3)
-            col1.metric("Avg Perceived Score", f"{avg_perceived:.2f} / 5")
-            col2.metric("Avg Actual Score",    f"{avg_actual:.2f} / 5")
-            col3.metric("Perception Gap",      f"{gap:+.2f}")
-
-            # Charts
-            st.subheader("Perceived vs Actual Understanding Over Time")
-            st.caption(
-                "Perceived score = average of clarity + adjusted pace + adjusted difficulty. "
-                "Actual score = quiz result scaled to 0–5."
+            col1.metric("Avg Perceived Score", f"{avg_p:.2f} / 5")
+            col2.metric("Avg Actual Score",    f"{avg_a:.2f} / 5")
+            col3.metric(
+                "Perception Gap",
+                f"{gap:+.2f}",
+                help="Positive = perceived understanding is higher than actual quiz score. "
+                     "Negative = actual score is higher than perceived understanding."
             )
-            chart_df = student_df.set_index("timestamp")[
-                ["perceived_score", "actual_score"]
-            ].rename(columns={
-                "perceived_score": "Perceived Understanding",
-                "actual_score":    "Actual (Quiz) Score"
-            })
-            st.line_chart(chart_df)
 
-            summary_bar = pd.DataFrame({
-                "Type":  ["Perceived Understanding", "Actual (Quiz) Score"],
-                "Score": [avg_perceived, avg_actual]
-            }).set_index("Type")
-            st.bar_chart(summary_bar)
+            st.subheader("Scores Over Time")
+            st.altair_chart(
+                line_chart(student_df, "Perceived vs Actual Understanding Over Time")
+            )
+
+            st.subheader("Overall Average Comparison")
+            st.altair_chart(
+                bar_chart(avg_p, avg_a, "Average Perceived vs Actual Score")
+            )
 
 
-# TEACHER VIEW
+# Teacher view
+
 if role == "Teacher":
 
-    # Three tabs: a class-wide overview, a per-topic deep dive, and a data export.
     tab_overview, tab_topic, tab_export = st.tabs(
-        ["📋 Class Overview", "🔍 Topic Analysis", "⬇️ Export Data"]
+        ["Class Overview", "Topic Analysis", "Export Data"]
     )
 
-    # Load all submissions once and reuse across all three tabs.
     df_all = load_data()
 
-    # If no data exists yet, show a message in every tab and stop.
     if df_all.empty:
         for tab in [tab_overview, tab_topic, tab_export]:
             with tab:
@@ -579,39 +661,34 @@ if role == "Teacher":
                 )
         st.stop()
 
-    # Pre-compute scores so we don't repeat the calculation in each tab.
     df_scored = compute_scores(df_all)
 
-    # TAB 1 — Class Overview
+    # Tab 1: Class Overview
 
     with tab_overview:
 
         st.header("Class Overview")
-        st.markdown("A high-level summary of all student submissions.")
+        st.markdown("A high-level summary of all student submissions across all topics.")
 
-        # Top-line metrics.
         col1, col2, col3 = st.columns(3)
         col1.metric("Total Submissions", len(df_all))
         col2.metric("Unique Students",   df_all["student_id"].nunique())
         col3.metric("Topics Covered",    df_all["topic"].nunique())
 
-        # Most recent 20 submissions across all students.
         st.subheader("Recent Submissions")
         st.dataframe(
             df_all.sort_values("timestamp", ascending=False).head(20),
             width="stretch"
         )
 
-        # Per-topic summary: how many submissions, average clarity, and average scores.
         st.subheader("Average Scores by Topic")
         topic_summary = (
-            df_scored
-            .groupby("topic")
+            df_scored.groupby("topic")
             .agg(
-                Submissions    = ("student_id",      "count"),
-                Avg_Clarity    = ("clarity",          "mean"),
-                Avg_Perceived  = ("perceived_score",  "mean"),
-                Avg_Actual     = ("actual_score",     "mean"),
+                Submissions   = ("student_id",     "count"),
+                Avg_Clarity   = ("clarity",         "mean"),
+                Avg_Perceived = ("perceived_score", "mean"),
+                Avg_Actual    = ("actual_score",    "mean"),
             )
             .round(2)
             .rename(columns={
@@ -622,15 +699,19 @@ if role == "Teacher":
         )
         st.dataframe(topic_summary, width="stretch")
 
-    # TAB 2 — Topic Analysis
+        show_formula()
+
+    # Tab 2: Topic Analysis
+
     with tab_topic:
 
         st.header("Topic-Level Analysis")
 
-        available_topics = df_all["topic"].unique().tolist()
-        selected_topic   = st.selectbox("Choose a topic to analyse", available_topics)
+        selected_topic = st.selectbox(
+            "Choose a topic to analyse",
+            df_all["topic"].unique().tolist()
+        )
 
-        # Filter and compute scores for the selected topic only.
         topic_df = compute_scores(
             df_all[df_all["topic"] == selected_topic].copy()
         ).sort_values("timestamp")
@@ -638,13 +719,12 @@ if role == "Teacher":
         if topic_df.empty:
             st.info("No data for this topic yet.")
         else:
-            avg_clarity   = topic_df["clarity"].mean()
-            avg_difficulty= topic_df["difficulty"].mean()
-            avg_quiz_pct  = (topic_df["quiz_score"] / topic_df["quiz_total"]).mean() * 100
-            avg_perceived = topic_df["perceived_score"].mean()
-            avg_actual    = topic_df["actual_score"].mean()
+            avg_clarity    = topic_df["clarity"].mean()
+            avg_difficulty = topic_df["difficulty"].mean()
+            avg_quiz_pct   = (topic_df["quiz_score"] / topic_df["quiz_total"]).mean() * 100
+            avg_perceived  = topic_df["perceived_score"].mean()
+            avg_actual     = topic_df["actual_score"].mean()
 
-            # Top-line metrics for the selected topic.
             st.subheader(f"Summary — {selected_topic}")
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Submissions",    len(topic_df))
@@ -652,49 +732,41 @@ if role == "Teacher":
             c3.metric("Avg Difficulty", f"{avg_difficulty:.2f} / 5")
             c4.metric("Avg Quiz Score", f"{avg_quiz_pct:.1f}%")
 
-            # Perceived vs actual comparison chart.
             st.subheader("Perceived vs Actual Understanding")
             st.caption(
-                "Perceived score combines clarity, adjusted pace, and adjusted difficulty. "
-                "Actual score is the quiz result scaled to 0–5."
+                "Perceived score is derived from the feedback ratings. "
+                "Actual score is the quiz result scaled to 0-5."
             )
-            compare_df = pd.DataFrame({
-                "Type":  ["Perceived Understanding", "Actual (Quiz) Score"],
-                "Score": [avg_perceived, avg_actual]
-            }).set_index("Type")
-            st.bar_chart(compare_df)
+            st.altair_chart(
+                bar_chart(
+                    avg_perceived, avg_actual,
+                    f"Average Scores — {selected_topic}"
+                )
+            )
 
-            # Automatic interpretation of the perception–performance gap.
-            # This is one of the core features of the tool.
             gap = avg_perceived - avg_actual
             if abs(gap) < 0.3:
                 st.success(
-                    "✅ Perception and performance are well aligned for this topic."
+                    "Perception and performance are well aligned for this topic."
                 )
             elif gap > 0:
                 st.warning(
-                    f"⚠️ Students are overestimating their understanding by "
-                    f"**{gap:.2f} points** on average. "
-                    "This topic may benefit from a follow-up session."
+                    f"On average, students overestimate their understanding "
+                    f"by **{gap:.2f} points**. "
+                    "Consider revisiting this topic in a future session."
                 )
             else:
                 st.info(
-                    f"ℹ️ Students are underestimating their understanding by "
-                    f"**{abs(gap):.2f} points**. "
-                    "Confidence-building activities may help here."
+                    f"On average, students underestimate their understanding "
+                    f"by **{abs(gap):.2f} points**. "
+                    "Confidence-building activities may help."
                 )
 
-            # Trend over time — how perceived and actual scores change week by week.
             st.subheader("Trend Over Time")
-            trend_df = topic_df.set_index("timestamp")[
-                ["perceived_score", "actual_score"]
-            ].rename(columns={
-                "perceived_score": "Perceived Understanding",
-                "actual_score":    "Actual (Quiz) Score"
-            })
-            st.line_chart(trend_df)
+            st.altair_chart(
+                line_chart(topic_df, f"Score Trend — {selected_topic}")
+            )
 
-            # Full submission detail table for this topic.
             st.subheader("All Submissions for This Topic")
             st.dataframe(
                 topic_df[[
@@ -709,33 +781,32 @@ if role == "Teacher":
                     "difficulty":      "Difficulty",
                     "quiz_score":      "Quiz Score",
                     "quiz_total":      "Out Of",
-                    "perceived_score": "Perceived",
-                    "actual_score":    "Actual"
+                    "perceived_score": "Perceived Score",
+                    "actual_score":    "Actual Score"
                 }),
                 width="stretch"
             )
 
-    # TAB 3 — Export Data
-    # Lets the teacher download the full dataset as a CSV file.
+    # Tab 3: Export
+
     with tab_export:
 
         st.header("Export Submission Data")
         st.markdown(
             "Download the full dataset as a CSV file. "
-            "This can be opened in Excel or any spreadsheet application."
+            "This can be opened in Excel or any spreadsheet application "
+            "for further analysis."
         )
-
         csv_bytes = df_all.to_csv(index=False).encode("utf-8")
         filename  = f"mathtrack_submissions_{datetime.now().strftime('%Y%m%d')}.csv"
 
         st.download_button(
-            label    = "⬇️ Download all submissions as CSV",
-            data     = csv_bytes,
-            file_name= filename,
-            mime     = "text/csv",
-            type     = "primary"
+            label     = "Download all submissions as CSV",
+            data      = csv_bytes,
+            file_name = filename,
+            mime      = "text/csv",
+            type      = "primary"
         )
-
         st.caption(
             f"Dataset contains **{len(df_all)} submissions** "
             f"from **{df_all['student_id'].nunique()} student(s)**."
