@@ -1,3 +1,5 @@
+import gspread
+from google.oauth2.service_account import Credentials
 import streamlit as st
 import csv
 from pathlib import Path
@@ -9,7 +11,7 @@ import altair as alt
 # Settings
 
 TEACHER_PASSWORD   = "teacher123"
-DATA_FILE          = Path("data/submissions.csv")
+
 QUESTIONS_PER_QUIZ = 3
 
 # Consistent colours used across all charts.
@@ -169,48 +171,41 @@ QUIZ_BANK = {
     ],
 }
 
-
+@st.cache_resource
+def get_sheet():
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=scope
+    )
+    client = gspread.authorize(creds)
+    return client.open("MathTrack Submissions").sheet1
 # Data functions
 
 def save_submission(student_id, topic, clarity, pace, difficulty,
                     comments, quiz_score, quiz_total):
-    """
-    Appends one submission row to the CSV file.
-    Creates the file and 'data' folder on the first run.
-    """
-    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    file_exists = DATA_FILE.exists()
-    with open(DATA_FILE, mode="a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow([
-                "timestamp", "student_id", "topic",
-                "clarity", "pace", "difficulty", "comments",
-                "quiz_score", "quiz_total"
-            ])
-        writer.writerow([
-            datetime.now().isoformat(timespec="seconds"),
-            student_id, topic, clarity, pace, difficulty,
-            comments, quiz_score, quiz_total
-        ])
+    sheet = get_sheet()
+    sheet.append_row([
+        datetime.now().isoformat(timespec="seconds"),
+        student_id, topic, clarity, pace, difficulty,
+        comments, quiz_score, quiz_total
+    ])
 
 
 def load_data():
-    """
-    Reads the CSV and returns a cleaned DataFrame.
-    Normalises student_id so filtering is reliable regardless of how
-    the value was stored (e.g. removes trailing '.0' or extra spaces).
-    """
-    if not DATA_FILE.exists():
+    sheet = get_sheet()
+    records = sheet.get_all_records()
+    if not records:
         return pd.DataFrame()
-    df = pd.read_csv(DATA_FILE)
+    df = pd.DataFrame(records)
     df["student_id"] = (
         df["student_id"].fillna("").astype(str)
         .str.replace(r"\.0$", "", regex=True).str.strip()
     )
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     return df
-
 
 def compute_scores(df):
     """
