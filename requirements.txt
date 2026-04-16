@@ -34,5 +34,5 @@ tornado==6.5.4
 typing_extensions==4.15.0
 tzdata==2025.3
 urllib3==2.6.3
-gspread==6.1.2
-google-auth==2.29.0
+gspread>=5.0.0
+
